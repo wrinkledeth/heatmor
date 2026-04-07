@@ -2,7 +2,7 @@
 
 Terminal system monitor for temps, fans, GPU, and RAM stats.
 
-![](image.png)
+![alt text](image.png)
 
 ## Data Sources
 

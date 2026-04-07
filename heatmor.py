@@ -35,8 +35,6 @@ _IT8792_VOLTAGE_LABELS = {
     "in0": "CPU Vcore",
     "in1": "DDR VTT",
     "in2": "Chipset",
-    "in4": "CPU Vdd18",
-    "in5": "DDR Vpp",
 }
 
 # it8686 in6 = DRAM A/B voltage (only present after acpi_enforce_resources=lax + reboot)
@@ -179,28 +177,26 @@ def _measure_panel(table, title):
     console = Console()
     p = Panel(table, title=f"[bold]{title}[/bold]", border_style="blue")
     w = p.__rich_measure__(console, console.options).maximum
-    # height = 2 (border) + 1 (header) + 1 (separator) + rows
-    h = _row_count(table) + 4
+    # height = 2 (panel border) + rows
+    h = _row_count(table) + 2
     return w, h
 
 
 def build_display(sensors, gpu, system, ram_details=None):
-    temps = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE_HEAD, padding=(0, 1))
-    temps.add_column("Sensor", style="dim")
-    temps.add_column("°C", justify="right")
+    temps = Table(show_header=False, box=None, padding=(0, 1))
+    temps.add_column(style="dim")
+    temps.add_column(justify="right")
     temps.add_row("CPU", colorize_temp(sensors.get("cpu_temp", 0), warn=70, crit=85))
     if gpu:
         temps.add_row("GPU", colorize_temp(gpu["temp"], warn=70, crit=85))
     temps.add_row("NVMe", colorize_temp(sensors.get("nvme_temp", 0), warn=50, crit=65))
-    if "pciex8_temp" in sensors:
-        temps.add_row("PCIEX8", colorize_temp(sensors["pciex8_temp"], warn=60, crit=75))
     if "system2_temp" in sensors:
-        temps.add_row("Sys 2", colorize_temp(sensors["system2_temp"], warn=50, crit=65))
+        temps.add_row("MOBO", colorize_temp(sensors["system2_temp"], warn=50, crit=65))
 
-    usage = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE_HEAD, padding=(0, 1))
-    usage.add_column("Comp", style="dim")
-    usage.add_column("%", justify="right")
-    usage.add_column("", justify="right", style="dim")
+    usage = Table(show_header=False, box=None, padding=(0, 1))
+    usage.add_column(style="dim")
+    usage.add_column(justify="right")
+    usage.add_column(justify="right", style="dim")
     cpu_freq_str = f"{system['cpu_mhz']} MHz" if system.get("cpu_mhz") else ""
     usage.add_row("CPU", colorize_pct(system['cpu_pct']), cpu_freq_str)
     if gpu:
@@ -209,20 +205,20 @@ def build_display(sensors, gpu, system, ram_details=None):
         usage.add_row("VRAM", colorize_pct(vram_pct), f"{gpu['vram_used']}/{gpu['vram_total']} MB")
     usage.add_row("RAM", colorize_pct(system['ram_pct']), f"{system['ram_used']:.1f}/{system['ram_total']:.0f} GB")
 
-    fans = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE_HEAD, padding=(0, 1))
-    fans.add_column("Fan", style="dim")
-    fans.add_column("RPM", justify="right")
+    fans = Table(show_header=False, box=None, padding=(0, 1))
+    fans.add_column(style="dim")
+    fans.add_column(justify="right")
     for name, rpm in sensors.get("fans", {}).items():
         fans.add_row(name, f"[cyan]{rpm}[/cyan]")
 
-    volts = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE_HEAD, padding=(0, 1))
-    volts.add_column("Rail", style="dim")
-    volts.add_column("V", justify="right")
+    volts = Table(show_header=False, box=None, padding=(0, 1))
+    volts.add_column(style="dim")
+    volts.add_column(justify="right")
     for label, v in sensors.get("voltages", {}).items():
-        volts.add_row(label, f"[cyan]{v:.3f}[/cyan]")
+        volts.add_row(label, f"[cyan]{v:.3f} V[/cyan]")
 
     # Measure all panels
-    titles = {"temps": "Temps", "usage": "Usage", "fans": "Fans", "volts": "Voltages"}
+    titles = {"temps": "Temps", "usage": "Usage", "fans": "Fans (RPM)", "volts": "Voltages"}
     tw, th = _measure_panel(temps, titles["temps"])
     uw, uh = _measure_panel(usage, titles["usage"])
     fw, fh = _measure_panel(fans, titles["fans"])
