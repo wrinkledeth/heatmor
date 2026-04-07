@@ -1,8 +1,8 @@
 # heatmor
 
-Terminal system monitor for temps, fans, GPU, and RAM stats.
+Terminal system monitor for temps, usage, fans, and voltages.
 
-![alt text](image.png)
+![](image.png)
 
 ## Data Sources
 
@@ -11,7 +11,7 @@ Terminal system monitor for temps, fans, GPU, and RAM stats.
 | **Temperatures** | `sensors -j` (`lm-sensors`) | CPU via `k10temp` (AMD), NVMe via `nvme-*`, motherboard via `it8792` |
 | **Usage** | `psutil`, `nvidia-smi` | CPU % and RAM from psutil; GPU util and VRAM from nvidia-smi |
 | **Fans** | `sensors -j` (`lm-sensors`) | Fan RPMs via `it8792` Super I/O chip |
-| **Voltages** | `sensors -j` (`lm-sensors`) | CPU Vcore, DDR VTT, Chipset, etc. via `it8792`; DRAM A/B via `it8686` (requires `acpi_enforce_resources=lax`) |
+| **Voltages** | `sensors -j` (`lm-sensors`) | CPU Vcore, DDR VTT, Chipset via `it8792` |
 
 ## Requirements
 

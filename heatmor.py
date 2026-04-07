@@ -1,5 +1,4 @@
 import json
-import re
 import subprocess
 import time
 
@@ -37,10 +36,6 @@ _IT8792_VOLTAGE_LABELS = {
     "in2": "Chipset",
 }
 
-# it8686 in6 = DRAM A/B voltage (only present after acpi_enforce_resources=lax + reboot)
-_IT8686_VOLTAGE_LABELS = {
-    "in6": "DRAM A/B",
-}
 
 
 def get_sensors():
@@ -55,11 +50,8 @@ def get_sensors():
 
     for key, val in data.items():
         if key.startswith("it8792"):
-            # temp1=PCIEX8, temp3=System 2
-            t1 = val.get("temp1", {}).get("temp1_input")
+            # temp3=System 2 (motherboard)
             t3 = val.get("temp3", {}).get("temp3_input")
-            if t1 is not None:
-                result["pciex8_temp"] = t1
             if t3 is not None:
                 result["system2_temp"] = t3
 
@@ -78,15 +70,6 @@ def get_sensors():
                     if v is not None:
                         voltages[label] = v
             result["voltages"] = voltages
-            break
-
-    for key, val in data.items():
-        if key.startswith("it8686"):
-            for in_key, label in _IT8686_VOLTAGE_LABELS.items():
-                if in_key in val:
-                    v = val[in_key].get(f"{in_key}_input")
-                    if v is not None:
-                        result.setdefault("voltages", {})[label] = v
             break
 
     for key, val in data.items():
@@ -131,41 +114,6 @@ def get_system():
     }
 
 
-def _get_dmi_field(text, field):
-    m = re.search(rf'^\t{re.escape(field)}:\s*(.+)$', text, re.MULTILINE)
-    return m.group(1).strip() if m else None
-
-
-def _parse_memory_device(text):
-    size = _get_dmi_field(text, "Size")
-    if not size or size in ("No Module Installed", "Not Installed", "Unknown"):
-        return None
-    speed = _get_dmi_field(text, "Configured Memory Speed") or _get_dmi_field(text, "Speed")
-    voltage = _get_dmi_field(text, "Configured Voltage")
-    return {
-        "slot": _get_dmi_field(text, "Locator") or "?",
-        "size": size,
-        "type": _get_dmi_field(text, "Type") or "",
-        "speed": speed if speed and speed != "Unknown" else "N/A",
-        "voltage": voltage if voltage and voltage != "Unknown" else "N/A",
-        "manufacturer": _get_dmi_field(text, "Manufacturer") or "",
-        "part": _get_dmi_field(text, "Part Number") or "",
-    }
-
-
-def get_ram_details():
-    result = subprocess.run(
-        ["sudo", "-n", "dmidecode", "--type", "17"],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        return None
-    stanzas = re.split(r'(?=^Memory Device)', result.stdout, flags=re.MULTILINE)
-    devices = [_parse_memory_device(s) for s in stanzas]
-    return [d for d in devices if d is not None]
-
-
-
 
 def _row_count(table):
     """Number of data rows in a Rich Table."""
@@ -182,7 +130,7 @@ def _measure_panel(table, title):
     return w, h
 
 
-def build_display(sensors, gpu, system, ram_details=None):
+def build_display(sensors, gpu, system):
     temps = Table(show_header=False, box=None, padding=(0, 1))
     temps.add_column(style="dim")
     temps.add_column(justify="right")
@@ -257,14 +205,13 @@ def build_display(sensors, gpu, system, ram_details=None):
 
 def main():
     psutil.cpu_percent(interval=None)  # prime the first reading
-    ram_details = get_ram_details()
     with Live(refresh_per_second=0.5, screen=True) as live:
         while True:
             try:
                 sensors = get_sensors()
                 gpu = get_gpu()
                 system = get_system()
-                live.update(build_display(sensors, gpu, system, ram_details))
+                live.update(build_display(sensors, gpu, system))
             except Exception as e:
                 live.update(f"[red]Error: {e}[/red]")
             time.sleep(REFRESH)
