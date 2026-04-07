@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import subprocess
 import time
 
@@ -115,6 +116,51 @@ def get_system():
 
 
 
+RASDAEMON_DB = "/var/lib/rasdaemon/ras-mc_event.db"
+
+
+def get_hw_errors():
+    try:
+        conn = sqlite3.connect(RASDAEMON_DB)
+        cur = conn.cursor()
+        errors = {}
+
+        # Memory controller errors
+        mc_ce = cur.execute("SELECT COALESCE(SUM(err_count), 0) FROM mc_event WHERE err_type = 'Corrected'").fetchone()[0]
+        mc_ue = cur.execute("SELECT COALESCE(SUM(err_count), 0) FROM mc_event WHERE err_type = 'Uncorrected'").fetchone()[0]
+        if mc_ce or mc_ue:
+            errors["Memory"] = {"ce": mc_ce, "ue": mc_ue}
+
+        # Machine Check Exceptions
+        mce_count = cur.execute("SELECT COUNT(*) FROM mce_record").fetchone()[0]
+        if mce_count:
+            errors["MCE"] = {"count": mce_count}
+
+        # PCIe AER errors
+        aer_count = cur.execute("SELECT COUNT(*) FROM aer_event").fetchone()[0]
+        if aer_count:
+            errors["PCIe"] = {"count": aer_count}
+
+        # Extended logs
+        extlog_count = cur.execute("SELECT COUNT(*) FROM extlog_event").fetchone()[0]
+        if extlog_count:
+            errors["Extlog"] = {"count": extlog_count}
+
+        # Recent errors across all tables (union of timestamps + source)
+        recent = cur.execute(
+            "SELECT timestamp, 'Memory' AS src, err_type || ': ' || err_msg AS detail FROM mc_event "
+            "UNION ALL SELECT timestamp, 'MCE', error_msg FROM mce_record "
+            "UNION ALL SELECT timestamp, 'PCIe', err_type || ': ' || err_msg FROM aer_event "
+            "UNION ALL SELECT timestamp, 'Extlog', 'severity ' || severity FROM extlog_event "
+            "ORDER BY timestamp DESC LIMIT 3"
+        ).fetchall()
+
+        conn.close()
+        return {"errors": errors, "recent": recent}
+    except Exception:
+        return None
+
+
 def _row_count(table):
     """Number of data rows in a Rich Table."""
     return len(table.rows)
@@ -130,7 +176,7 @@ def _measure_panel(table, title):
     return w, h
 
 
-def build_display(sensors, gpu, system):
+def build_display(sensors, gpu, system, hw_errors):
     temps = Table(show_header=False, box=None, padding=(0, 1))
     temps.add_column(style="dim")
     temps.add_column(justify="right")
@@ -195,8 +241,28 @@ def build_display(sensors, gpu, system):
     # Outer panel width = left + right panel widths + 2 border + 2 padding
     outer_width = wl + wr + 4
 
+    # Health errors panel
+    if hw_errors is None:
+        health_text = "[dim]Unavailable (rasdaemon)[/dim]"
+    elif not hw_errors["errors"]:
+        health_text = "[green]No hardware errors[/green]"
+    else:
+        parts = []
+        for src, info in hw_errors["errors"].items():
+            if "ce" in info:
+                ce_str = f"[yellow]CE:{info['ce']}[/yellow]" if info["ce"] else "CE:0"
+                ue_str = f"[red]UE:{info['ue']}[/red]" if info["ue"] else "UE:0"
+                parts.append(f"{src} {ce_str} {ue_str}")
+            else:
+                parts.append(f"[red]{src}: {info['count']}[/red]")
+        health_text = "  ".join(parts)
+        for ts, src, detail in hw_errors["recent"]:
+            health_text += f"\n[dim]{ts}[/dim] [{src}] {detail}"
+
+    health_panel = Panel(health_text, title="[bold]Errors[/bold]", border_style="blue", width=outer_width - 4)
+
     return Panel(
-        Group(top, bottom),
+        Group(top, bottom, health_panel),
         title="[bold white]heatmor[/bold white]",
         border_style="bright_blue",
         width=outer_width,
@@ -211,7 +277,8 @@ def main():
                 sensors = get_sensors()
                 gpu = get_gpu()
                 system = get_system()
-                live.update(build_display(sensors, gpu, system))
+                hw_errors = get_hw_errors()
+                live.update(build_display(sensors, gpu, system, hw_errors))
             except Exception as e:
                 live.update(f"[red]Error: {e}[/red]")
             time.sleep(REFRESH)
