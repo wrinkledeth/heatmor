@@ -109,7 +109,7 @@ def get_system():
     return {
         "cpu_pct": psutil.cpu_percent(interval=None),
         "cpu_mhz": int(freq.current) if freq else None,
-        "ram_used": mem.used / 1024**3,
+        "ram_used": (mem.total - mem.available) / 1024**3,
         "ram_total": mem.total / 1024**3,
         "ram_pct": mem.percent,
     }
